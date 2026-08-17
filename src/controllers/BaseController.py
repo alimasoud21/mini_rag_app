@@ -3,7 +3,7 @@ import os
 import random
 import string
 
-class BaseContorller:
+class BaseController:
     
     def __init__(self):
         self.app_setting : Settings = get_settings()

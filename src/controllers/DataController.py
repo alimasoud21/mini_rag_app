@@ -1,4 +1,4 @@
-from .BaseController import BaseContorller
+from .BaseController import BaseController
 from .ProjectContoller import ProjectController
 from fastapi import UploadFile
 from models import Response_signal
@@ -6,7 +6,7 @@ import os
 import re
 
 
-class Datacontroller(BaseContorller):
+class Datacontroller(BaseController):
 
     def __init__(self):
 
