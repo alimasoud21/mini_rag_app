@@ -1,7 +1,21 @@
-from fastapi import FastAPI 
+from fastapi import FastAPI  # type: ignore
 from routes import base, data
+from motor.motor_asyncio import AsyncIOMotorClient # type: ignore
+from helpers.config import get_settings
 
 app = FastAPI()
+
+#the events should be written befor the routes
+@app.on_event("startup")
+async def startup_db_client():
+    settings = get_settings()
+
+    app.mongo_conn = AsyncIOMotorClient(settings.MONGDB_URL)
+    app.db_client = app.mongo_conn[settings.MONGODB_DATABASE]
+
+@app.on_event("shutdown")
+async def shoutdown_db_client():
+    app.mongo_conn.close()
 
 app.include_router(base.base_router)
 app.include_router(data.data_router)

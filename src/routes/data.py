@@ -1,12 +1,18 @@
-from fastapi import FastAPI, APIRouter, Depends, UploadFile, status  # type: ignore
+from fastapi import FastAPI, APIRouter, Depends, UploadFile, status, Request  # type: ignore
 from fastapi.responses import JSONResponse   # type: ignore
 from helpers.config import get_settings, Settings
 import os 
-from controllers import Datacontroller, ProjectController, ProcessController # better way to import files using __init__.py
-import aiofiles   # type: ignore
-from models import Response_signal
 import logging
+import aiofiles   # type: ignore
+
+from controllers import Datacontroller, ProjectController, ProcessController # better way to import files using __init__.py
+
+from models import Response_signal
+
 from .schemas.data import ProcessRequest
+from models.ProjectModel import ProjectModel
+from models.ChunkModel import ChunkModel
+from models.db_schemas import DataChunk
 
 logger = logging.getLogger('uvicorn.error')
 
@@ -16,9 +22,16 @@ data_router = APIRouter(
 )
 
 @data_router.post("/upload/{Project_ID}")
-async def upload_data_files(Project_ID: str, file: UploadFile,
+async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
                             app_settings : Settings = Depends(get_settings)):
-    
+    #retrive project form database 
+    project_model = ProjectModel(
+        db_client= request.app.db_client
+    )
+    project = await project_model.get_project_or_create_one(
+        Project_ID=Project_ID
+    )
+
     #validate data
 
     data_controller = Datacontroller()
@@ -32,7 +45,7 @@ async def upload_data_files(Project_ID: str, file: UploadFile,
             }
         )
     
-    project_dir_path = ProjectController().get_project_path(Project_ID=Project_ID)
+    #project_dir_path = ProjectController().get_project_path(Project_ID=Project_ID)
 
     file_path, file_id = data_controller.generate_unique_file_path(
         orig_file_name = file.filename,
@@ -58,16 +71,32 @@ async def upload_data_files(Project_ID: str, file: UploadFile,
     return JSONResponse(
             content = {
                 "signal" : Response_signal.FILE_UPLOAD_SUCCESS.value,
-                "file_id" : file_id
+                "file_id" : file_id,
+                "project_id" : str(project._id)
             }
         )
 
 @data_router.post("/process/{Project_ID}")
-async def process_endpoint(Project_ID: str, process_request: ProcessRequest):
+async def process_endpoint(request: Request, Project_ID: str, process_request: ProcessRequest):
 
     file_id = process_request.file_id
     chunk_size = process_request.chunk_size
     overlap_size = process_request.overlap_size
+    do_reset = process_request.do_reset
+
+    #retrive project form database 
+    project_model = ProjectModel(
+        db_client= request.app.db_client
+    )
+
+    project = await project_model.get_project_or_create_one(
+        Project_ID=Project_ID
+    )
+
+    chunk_model = ChunkModel(
+        db_client= request.app.db_client
+    )
+
 
     process_controller = ProcessController(Project_ID= Project_ID)
 
@@ -89,6 +118,28 @@ async def process_endpoint(Project_ID: str, process_request: ProcessRequest):
             }
         )
     
-    return file_chunks
+    file_chunks_records = [
+        DataChunk(
+            chunk_text=chunk.page_content,
+            chunk_metadata=chunk.metadata,
+            chunk_order=i + 1,
+            chunk_Project_ID=project.id,
+        )
+        for i, chunk in enumerate(file_chunks)
+    ]
 
+
+    #retrive project form database 
+    if do_reset == 1:
+        await chunk_model.delete_chunks_by_project_id(
+            Project_ID=project.id
+        )
+
+
+    no_records = await chunk_model.insert_many_chunks(chunks=file_chunks_records)
+
+    return JSONResponse({
+        "signal": Response_signal.PROCESSING_SUCCESS.value,
+        "number_of_records": no_records
+    })
 
