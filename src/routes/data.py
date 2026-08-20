@@ -25,7 +25,7 @@ data_router = APIRouter(
 async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
                             app_settings : Settings = Depends(get_settings)):
     #retrive project form database 
-    project_model = ProjectModel(
+    project_model = await ProjectModel.create_instacne(
         db_client= request.app.db_client
     )
     project = await project_model.get_project_or_create_one(
@@ -85,7 +85,7 @@ async def process_endpoint(request: Request, Project_ID: str, process_request: P
     do_reset = process_request.do_reset
 
     #retrive project form database 
-    project_model = ProjectModel(
+    project_model = await ProjectModel.create_instacne(
         db_client= request.app.db_client
     )
 
@@ -93,7 +93,7 @@ async def process_endpoint(request: Request, Project_ID: str, process_request: P
         Project_ID=Project_ID
     )
 
-    chunk_model = ChunkModel(
+    chunk_model = await ChunkModel.create_instacne(
         db_client= request.app.db_client
     )
 
