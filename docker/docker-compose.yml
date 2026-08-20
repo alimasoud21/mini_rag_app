@@ -4,12 +4,19 @@ services:
 
     container_name: mongodb
     
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+
+
     ports:
-      - "27017:27017"
+      - "27007:27017"
+    
     
     volumes:
       - ./mongodb:/data/db
-     
+
+    
     networks:
       - backend
     
