@@ -12,7 +12,8 @@ from models import Response_signal
 from .schemas.data import ProcessRequest
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
-from models.db_schemas import DataChunk
+from models.db_schemas import DataChunk, Asset
+from models.AssetModel import AssetModel
 
 logger = logging.getLogger('uvicorn.error')
 
@@ -24,6 +25,7 @@ data_router = APIRouter(
 @data_router.post("/upload/{Project_ID}")
 async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
                             app_settings : Settings = Depends(get_settings)):
+    
     #retrive project form database 
     project_model = await ProjectModel.create_instacne(
         db_client= request.app.db_client
@@ -67,12 +69,25 @@ async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
                 "signal": Response_signal.FILE_UPLOAD_FAILED.value
             }
         )
-            
+
+    asset_model = await AssetModel.create_instance(
+        db_client=request.app.db_client
+    )     
+    asset =  Asset(
+        asset_project_id = project.id ,
+        asset_type = "file", # shoud be imported from enum file
+        asset_name = file_id,
+        asset_size = os.path.getsize(file_path)
+
+    )
+
+    asset_reocrd = await asset_model.create_asset(asset=asset)
+
+
     return JSONResponse(
             content = {
                 "signal" : Response_signal.FILE_UPLOAD_SUCCESS.value,
-                "file_id" : file_id,
-                "project_id" : str(project._id)
+                "file_id" : str(asset_reocrd.id),
             }
         )
 
