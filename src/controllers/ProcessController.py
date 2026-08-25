@@ -2,9 +2,9 @@ from .BaseController import BaseController
 from .ProjectContoller import ProjectController
 import os
 from models import ProcessingEnum
-from langchain_community.document_loaders import TextLoader # type: ignore
-from langchain_community.document_loaders import PyMuPDFLoader # type: ignore
-from langchain_text_splitters import RecursiveCharacterTextSplitter # type: ignore
+from langchain_community.document_loaders import TextLoader
+from langchain_community.document_loaders import PyMuPDFLoader 
+from langchain_text_splitters import RecursiveCharacterTextSplitter 
 
 class ProcessController(BaseController):
     
