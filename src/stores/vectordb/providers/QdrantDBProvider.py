@@ -52,6 +52,7 @@ class QdrantDBProvider(VectorDBInterface):
                 collection_name=collection_name,
                 vectors_config=models.VectorParams(size=embedding_size, distance=self.distance_method),
                 )
+            
             return True
 
         return False 
@@ -83,7 +84,7 @@ class QdrantDBProvider(VectorDBInterface):
             self.logger.error(f"Error while inserting point: {e}")
             return None
 
-        # we could return the point_id insted
+
         return point_id
             
     def insert_many(self, collection_name: str, texts: list, 
