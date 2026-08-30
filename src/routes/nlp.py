@@ -1,9 +1,8 @@
 from fastapi import FastAPI, APIRouter, status, Request 
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse 
-import os 
 import logging
 
-from helpers.config import get_settings, Settings
 from routes.schemas.nlp import PushRequest, SearchRequest
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
@@ -127,7 +126,8 @@ async def search_index(request: Request, Project_ID: str, search_request: Search
     nlp_controller = NLPController(
             vectordb_client=request.app.vectordb_client,
             generation_client=request.app.generation_client,
-            embedding_client=request.app.embedding_client
+            embedding_client=request.app.embedding_client,
+            template_purser = request.app.template_purser,
     )
 
     results = nlp_controller.search_vector_db_collection(
@@ -147,6 +147,47 @@ async def search_index(request: Request, Project_ID: str, search_request: Search
     return JSONResponse(
         content={
             "signal": Response_signal.VECTORDB_SEARCH_SUCCESS.value,
-            "results": results
+            "results":  [result.dict() for result in results]
         } 
     )
+
+@nlp_router.post("/index/answer/{Project_ID}")
+async def answer_rag(request: Request, Project_ID: str, search_request: SearchRequest):
+
+    project_model = await ProjectModel.create_instacne(
+        db_client= request.app.db_client
+    )
+        
+    project = await project_model.get_project_or_create_one(
+        Project_ID=Project_ID
+    ) 
+
+    nlp_controller = NLPController(
+        vectordb_client=request.app.vectordb_client,
+        generation_client=request.app.generation_client,
+        embedding_client=request.app.embedding_client,
+        template_purser = request.app.template_purser,
+    )
+
+    answer, full_messages = nlp_controller.answer_rag_question(
+        project=project,
+        query= search_request.text,
+        limit=search_request.limit
+    )
+
+    if not answer:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "signal": Response_signal.ANSWER_GENERATION_ERROR.value
+            } 
+        )
+
+    return JSONResponse(
+        content=jsonable_encoder({
+            "siganl" : Response_signal.ANSWER_GENERATION_SUCCESS.value,
+            "answer" : answer,
+            "full_messages" : full_messages,
+        })
+    )
+       

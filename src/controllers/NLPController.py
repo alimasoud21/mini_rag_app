@@ -6,12 +6,13 @@ import json
 
 class NLPController(BaseController):
 
-    def __init__(self, vectordb_client, generation_client, embedding_client):
+    def __init__(self, vectordb_client, generation_client, embedding_client, template_purser):
         super().__init__()
 
         self.vectordb_client = vectordb_client
         self.generation_client = generation_client
         self.embedding_client = embedding_client
+        self.template_purser = template_purser
 
 
     def create_collection_name(self, Project_ID: str):
@@ -93,10 +94,57 @@ class NLPController(BaseController):
         if not results:
             return False
         
-        return json.loads(
-            # object -> json string
-            json.dumps(results, default=lambda x: x.__dict__)
+        return results
+    
+    def answer_rag_question(self, project: Project, query: str, limit: int = 10):
+        answer, full_messages = None, None
+        
+        # step 1: retrieve related documents
+        retrieved_documents = self.search_vector_db_collection(
+            project=project,
+            text=query,
+            limit=limit,
         )
 
+        if not retrieved_documents or len(retrieved_documents) == 0:
+            return answer, full_messages
 
+        # step 2: construct llm prompt parts
+        system_prompt = self.template_purser.get("rag", "system_prompt")
 
+        document_prompts = "\n".join([
+            self.template_purser.get("rag", "document_prompt",{
+                "doc_num": idx + 1,
+                "chunk_text": document.text,
+            })
+            for idx, document in enumerate(retrieved_documents)
+        ])
+        
+        footer_prompt = self.template_purser.get("rag", "footer_prompt")
+        full_prompt = "\n\n".join([document_prompts, footer_prompt])
+
+        # step 3: Construct Generation Client Prompts (The V2 way)
+        # Here we use construct_prompt to build the strict [{"role": "system", "content": ...}] format
+        full_messages = [
+            self.generation_client.construct_prompt(
+                prompt=system_prompt,
+                role=self.generation_client.enums.SYSTEM.value  # Will be lowercased inside construct_prompt
+            ),
+            self.generation_client.construct_prompt(
+                prompt=full_prompt,
+                role=self.generation_client.enums.USER.value    # Will be lowercased inside construct_prompt
+            )
+        ]
+
+        # step 4: Retrieve the Answer
+        # We pass the full_messages list to the prompt argument
+        answer = self.generation_client.generate_text(
+            prompt=full_messages, 
+        )
+
+        #return answer, full_prompt, full_messages
+
+        return (
+            json.loads(json.dumps(answer, default=lambda x: x.__dict__)),
+            json.loads(json.dumps(full_messages, default=lambda x: x.__dict__))
+        )
