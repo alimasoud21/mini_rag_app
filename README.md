@@ -6,7 +6,7 @@ this the a minimal implementation fo the RAG model for question answering.
 
 - python 3.8 or later
 
-## install the required pakages
+## install the required pakages 
 
 ```bash
 $ pip install -r requirements.txt
@@ -17,3 +17,5 @@ $ pip install -r requirements.txt
 ```bash
 $ cp .env.example .env
 ```
+
+
