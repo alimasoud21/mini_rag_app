@@ -25,9 +25,9 @@ class Datacontroller(BaseController):
         return True , Response_signal.FILE_VALIDATED_SUCCESS.value
     
 
-    def generate_unique_file_path(self, orig_file_name: str, Project_ID: str):
+    def generate_unique_file_path(self, orig_file_name: str, project_id: str):
         
-        project_path = ProjectController().get_project_path(Project_ID=Project_ID)
+        project_path = ProjectController().get_project_path(project_id=project_id)
 
         random_key = self.generate_random_key()
 
