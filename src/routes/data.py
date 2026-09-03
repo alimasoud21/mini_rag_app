@@ -22,8 +22,8 @@ data_router = APIRouter(
     tags=["api", "data"]
 )
 
-@data_router.post("/upload/{Project_ID}")
-async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
+@data_router.post("/upload/{project_id}")
+async def upload_data_files(request: Request, project_id: int, file: UploadFile,
                             app_settings : Settings = Depends(get_settings)):
     
     #retrive project form database 
@@ -31,7 +31,7 @@ async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
         db_client= request.app.db_client
     )
     project = await project_model.get_project_or_create_one(
-        Project_ID=Project_ID
+        project_id=project_id
     )
 
     #validate data
@@ -47,11 +47,11 @@ async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
             }
         )
     
-    #project_dir_path = ProjectController().get_project_path(Project_ID=Project_ID)
+    #project_dir_path = ProjectController().get_project_path(project_id=project_id)
 
     file_path, file_id = data_controller.generate_unique_file_path(
         orig_file_name = file.filename,
-        Project_ID=Project_ID
+        project_id=project_id
         )
 
     try:
@@ -74,7 +74,7 @@ async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
         db_client=request.app.db_client
     )     
     asset =  Asset(
-        asset_project_id = project.id ,
+        asset_project_id = project.project_id ,
         asset_type = "file", # shoud be imported from enum file
         asset_name = file_id,
         asset_size = os.path.getsize(file_path)
@@ -87,12 +87,12 @@ async def upload_data_files(request: Request, Project_ID: str, file: UploadFile,
     return JSONResponse(
             content = {
                 "signal" : Response_signal.FILE_UPLOAD_SUCCESS.value,
-                "file_id" : str(asset_reocrd.id),
+                "file_id" : str(asset_reocrd.asset_id),
             }
         )
 
-@data_router.post("/process/{Project_ID}")
-async def process_endpoint(request: Request, Project_ID: str, process_request: ProcessRequest):
+@data_router.post("/process/{project_id}")
+async def process_endpoint(request: Request, project_id: int, process_request: ProcessRequest):
 
     chunk_size = process_request.chunk_size
     overlap_size = process_request.overlap_size
@@ -104,7 +104,7 @@ async def process_endpoint(request: Request, Project_ID: str, process_request: P
     )
 
     project = await project_model.get_project_or_create_one(
-        Project_ID=Project_ID
+        project_id=project_id
     )
 
 
@@ -121,7 +121,7 @@ async def process_endpoint(request: Request, Project_ID: str, process_request: P
     if process_request.file_id :
         
         asset = await asset_model.get_asset(
-            asset_project_id=project.id,
+            asset_project_id=project.project_id,
             asset_name=process_request.file_id
             )
 
@@ -134,18 +134,18 @@ async def process_endpoint(request: Request, Project_ID: str, process_request: P
             )
 
         project_assets_ids = {
-            asset.id: asset.asset_name
+            asset.asset_id: asset.asset_name
         }
     
     else:
 
         project_assets = await asset_model.get_all_project_assets(
-            asset_project_id=project.id,
+            project_id=project.project_id,
             asset_type="file" #this should be adde to enum file
         )
 
         project_assets_ids={
-            asset.id: asset.asset_name
+            asset.asset_id: asset.asset_name
             for asset in project_assets
         }
 
@@ -157,7 +157,7 @@ async def process_endpoint(request: Request, Project_ID: str, process_request: P
             }
         )
 
-    process_controller = ProcessController(Project_ID= Project_ID)
+    process_controller = ProcessController(project_id= project_id)
 
     no_records = 0
     no_files = 0
@@ -165,7 +165,7 @@ async def process_endpoint(request: Request, Project_ID: str, process_request: P
     #retrive project form database 
     if do_reset == 1:
         await chunk_model.delete_chunks_by_project_id(
-            Project_ID=project.id
+            project_id=project.project_id
         )
 
     for asset_id, file_id in project_assets_ids.items():
@@ -197,7 +197,7 @@ async def process_endpoint(request: Request, Project_ID: str, process_request: P
                 chunk_text=chunk.page_content,
                 chunk_metadata=chunk.metadata,
                 chunk_order=i + 1,
-                chunk_Project_ID=project.id,
+                chunk_project_id=project.project_id,
                 chunk_asset_id=asset_id
             )
             for i, chunk in enumerate(file_chunks)

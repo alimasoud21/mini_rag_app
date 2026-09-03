@@ -15,18 +15,18 @@ class NLPController(BaseController):
         self.template_purser = template_purser
 
 
-    def create_collection_name(self, Project_ID: str):
+    def create_collection_name(self, project_id: str):
 
-        return f"collection_{Project_ID}". strip()
+        return f"collection_{project_id}". strip()
     
     def reset_vector_db_collection(self, project: Project, collection_name: str):
 
-        collection_name = self.create_collection_name(Project_ID=project.Project_ID)
+        collection_name = self.create_collection_name(project_id=project.project_id)
         return self.vectordb_client.delete_collection(collection_name=collection_name)
 
     def get_vector_collection_info(self, project: Project):
 
-        collection_name = self.create_collection_name(Project_ID=project.Project_ID)
+        collection_name = self.create_collection_name(project_id=project.project_id)
         collection_info =  self.vectordb_client.get_collection_info(collection_name=collection_name)
 
         # string -> dic
@@ -38,7 +38,7 @@ class NLPController(BaseController):
     def index_into_vector_db(self, project: Project, chunks: List[DataChunk], do_reset: bool = False): 
 
         # get collection name
-        collection_name = self.create_collection_name(Project_ID=project.Project_ID)
+        collection_name = self.create_collection_name(project_id=project.project_id)
 
         # manage items for insert many
         texts = [c.chunk_text for c in chunks]        
@@ -72,7 +72,7 @@ class NLPController(BaseController):
     def search_vector_db_collection(self, project: Project, text: str, limit: int = 10):
 
         # get collection name
-        collection_name = self.create_collection_name(Project_ID=project.Project_ID)
+        collection_name = self.create_collection_name(project_id=project.project_id)
 
         # get text embedding vector
         vector = self.embedding_client.embed_text(
@@ -116,11 +116,15 @@ class NLPController(BaseController):
             self.template_purser.get("rag", "document_prompt",{
                 "doc_num": idx + 1,
                 "chunk_text": document.text,
+
             })
             for idx, document in enumerate(retrieved_documents)
         ])
         
-        footer_prompt = self.template_purser.get("rag", "footer_prompt")
+        footer_prompt = self.template_purser.get("rag", "footer_prompt", {
+            "query": query
+        })
+
         full_prompt = "\n\n".join([document_prompts, footer_prompt])
 
         # step 3: Construct Generation Client Prompts (The V2 way)
