@@ -20,13 +20,13 @@ class AssetModel(BaseDataModel):
                 session.add(asset)
         return asset
     
-    async def get_asset(self, project_id: str, asset_name: str):
+    async def get_asset(self, asset_project_id: str, asset_name: str):
             async with self.db_client() as session:
                 result  = await session.execute(select(Asset).where(
-                    Asset.asset_project_id == project_id,
+                    Asset.asset_project_id == asset_project_id,
                     Asset.asset_name == asset_name,
                     ))
-                asset = result.scaler_one_or_none()
+                asset = result.scalar_one_or_none()
             return asset 
     
     async def get_all_project_assets(self, project_id: str, asset_type: str ):

@@ -5,7 +5,7 @@ import os
 import logging
 import aiofiles   # type: ignore
 
-from controllers import Datacontroller, ProjectController, ProcessController # better way to import files using __init__.py
+from controllers import Datacontroller, NLPController, ProcessController # better way to import files using __init__.py
 
 from models import Response_signal
 
@@ -107,14 +107,20 @@ async def process_endpoint(request: Request, project_id: int, process_request: P
         project_id=project_id
     )
 
+    nlp_controller = NLPController(
+        vectordb_client=request.app.vectordb_client,
+        generation_client=request.app.generation_client,
+        embedding_client=request.app.embedding_client,
+        template_purser=request.app.template_purser
+    )
 
     chunk_model = await ChunkModel.create_instacne(
         db_client= request.app.db_client
     )
 
     asset_model = await AssetModel.create_instance(
-            db_client=request.app.db_client
-        )
+        db_client=request.app.db_client
+    )
     
     project_assets_ids = {}
 
@@ -164,6 +170,11 @@ async def process_endpoint(request: Request, project_id: int, process_request: P
 
     #retrive project form database 
     if do_reset == 1:
+        # delete vectors
+        collection_name = nlp_controller.create_collection_name(project_id=project.project_id)
+        _ = await request.app.vectordb_client.delete_collection(collection_name=collection_name)
+
+        # delete chunks
         await chunk_model.delete_chunks_by_project_id(
             project_id=project.project_id
         )

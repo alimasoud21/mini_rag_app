@@ -3,6 +3,8 @@ from models.db_schemas import Project, DataChunk
 from typing import List
 from stores.llm.LLMEnums import DocumentTypeEnums
 import json
+import asyncio
+import logging
 
 class NLPController(BaseController):
 
@@ -17,17 +19,17 @@ class NLPController(BaseController):
 
     def create_collection_name(self, project_id: str):
 
-        return f"collection_{project_id}". strip()
+        return f"collection_{self.vectordb_client.default_vector_size}_{project_id}". strip()
     
-    def reset_vector_db_collection(self, project: Project, collection_name: str):
+    async def reset_vector_db_collection(self, project: Project, collection_name: str):
 
         collection_name = self.create_collection_name(project_id=project.project_id)
-        return self.vectordb_client.delete_collection(collection_name=collection_name)
+        return await self.vectordb_client.delete_collection(collection_name=collection_name)
 
-    def get_vector_collection_info(self, project: Project):
+    async def get_vector_collection_info(self, project: Project):
 
         collection_name = self.create_collection_name(project_id=project.project_id)
-        collection_info =  self.vectordb_client.get_collection_info(collection_name=collection_name)
+        collection_info =  await self.vectordb_client.get_collection_info(collection_name=collection_name)
 
         # string -> dic
         return json.loads(
@@ -35,7 +37,7 @@ class NLPController(BaseController):
             json.dumps(collection_info, default=lambda x: x.__dict__)
         )
     
-    def index_into_vector_db(self, project: Project, chunks: List[DataChunk], do_reset: bool = False): 
+    async def index_into_vector_db(self, project: Project, chunks: List[DataChunk], points_ids= List[int], do_reset: bool = False): 
 
         # get collection name
         collection_name = self.create_collection_name(project_id=project.project_id)
@@ -43,51 +45,78 @@ class NLPController(BaseController):
         # manage items for insert many
         texts = [c.chunk_text for c in chunks]        
         metadata = [c.chunk_metadata for c in chunks]
-        vectors =[
-            self.embedding_client.embed_text(text = text, 
-                                             document_type=DocumentTypeEnums.DOCUMENT.value) 
-            for text in texts
-            ]
+        
+        max_retries = 3
+        retry_delay = 62 # wait just over a minute for the token bucket to reset
+        vectors = None
+        
+        for attempt in range(max_retries):
+            try:
+                # Attempt to get embeddings
+                vectors = self.embedding_client.embed_text(text=texts, document_type=DocumentTypeEnums.DOCUMENT.value)
+                break  # If successful, break out of the retry loop
+                
+            except Exception as e:
+                # Catch the rate limit error (or any other API error)
+                logging.warning(f"Embedding attempt {attempt + 1} failed. Error: {e}")
+                
+                if attempt < max_retries - 1:
+                    logging.info(f"Rate limit likely hit. Pausing for {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    logging.error("Max retries reached. Aborting embedding process.")
+                    raise e  # Crash gracefully if it fails 3 times in a row
+
         
         # create collection if not existed -> bool
-        collection = self.vectordb_client.create_collection(
+        collection = await self.vectordb_client.create_collection(
                      collection_name=collection_name,
                      embedding_size = self.embedding_client.embedding_size,
                      do_reset = do_reset
                      )
 
         #insert into database -> list
-        points_ids = self.vectordb_client.insert_many( 
+        points_ids = await self.vectordb_client.insert_many( 
             collection_name = collection_name,
             texts = texts, 
             vectors = vectors,
-            metadata =metadata
+            metadata =metadata,
+            points_ids=points_ids
         )
+
+        
 
         return {
             "created_collection": collection,
             "points_ids": points_ids
         }
 
-    def search_vector_db_collection(self, project: Project, text: str, limit: int = 10):
+    async def search_vector_db_collection(self, project: Project, text: str, limit: int = 10):
 
+        query_vector = None
         # get collection name
         collection_name = self.create_collection_name(project_id=project.project_id)
 
         # get text embedding vector
-        vector = self.embedding_client.embed_text(
+        vectors = self.embedding_client.embed_text(
             text = text, 
             document_type = DocumentTypeEnums.QUERY.value
         )
 
         # validate vector
-        if not vector or len(vector) == 0:
+        if not vectors or len(vectors) == 0:
+            return False
+
+        if isinstance(vectors, list) and len(vectors) > 0:
+            query_vector = vectors[0]
+
+        if not query_vector :
             return False
         
         # do semantic search
-        results = self.vectordb_client.search_by_vector(
+        results = await self.vectordb_client.search_by_vector(
             collection_name=collection_name,
-            vector = vector,
+            vector = query_vector,
             limit = limit
         )
 
@@ -96,11 +125,11 @@ class NLPController(BaseController):
         
         return results
     
-    def answer_rag_question(self, project: Project, query: str, limit: int = 10):
+    async def answer_rag_question(self, project: Project, query: str, limit: int = 10):
         answer, full_messages = None, None
         
         # step 1: retrieve related documents
-        retrieved_documents = self.search_vector_db_collection(
+        retrieved_documents = await self.search_vector_db_collection(
             project=project,
             text=query,
             limit=limit,
