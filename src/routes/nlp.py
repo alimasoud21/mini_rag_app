@@ -9,6 +9,8 @@ from models.ChunkModel import ChunkModel
 from controllers import NLPController
 from models import Response_signal
 
+from tqdm.auto import tqdm 
+
 
 logger = logging.getLogger('uvicorn.error')
 
@@ -49,6 +51,20 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
     has_chunks = True
     page_number = 1
     total_points_inserted = 0
+    idx = 0
+
+    collection_name = nlp_controller.create_collection_name(project_id=project.project_id)
+
+    _ = await request.app.vectordb_client.create_collection(
+        collection_name=collection_name,
+        embedding_size = request.app.embedding_client.embedding_size,
+        do_reset=push_request.do_reset, 
+    )
+
+    #setup batching 
+    total_chuncks_count = await chunk_model.get_total_chunks_count(project_id=project.project_id)
+    bar = tqdm(total=total_chuncks_count, desc="Vector Indexing", position=0)
+
 
     while has_chunks:
         Page_chunks = await chunk_model.get_project_chunks(project_id=project.project_id, page_number=page_number)
@@ -56,20 +72,21 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
         if len(Page_chunks):
             page_number += 1
 
-        if not page_number or len(Page_chunks) == 0:
+        if not Page_chunks or len(Page_chunks) == 0:
             has_chunks = False
             break
 
-        results = nlp_controller.index_into_vector_db(
+        points_ids =  [ c.chunk_id for c in Page_chunks ]
+        idx += len(Page_chunks)
+
+        is_inserted  = await nlp_controller.index_into_vector_db(
             project=project, 
             chunks=Page_chunks,
-            do_reset=push_request.do_reset
+            points_ids=points_ids,
         )
-                                
-        my_collection = results["created_collection"] # will be true or false so i just need it to validate and handle errors
-        my_points = results["points_ids"] # will be a list of uuids so i should store it outside the for loop or just return its len()
+                            
 
-        if not my_collection or len(my_points) == 0 :
+        if not is_inserted :
             
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -78,7 +95,8 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
                 } 
             )
 
-        total_points_inserted += len(my_points)
+        bar.update(len(Page_chunks))
+        total_points_inserted += len(Page_chunks)
 
     return JSONResponse(
         content={
@@ -105,7 +123,7 @@ async def get_project_index_info(request: Request, project_id: int):
             template_purser=request.app.template_purser
     )
 
-    collection_info = nlp_controller.get_vector_collection_info(project=project)
+    collection_info = await nlp_controller.get_vector_collection_info(project=project)
 
     return JSONResponse(
         content={
@@ -132,7 +150,7 @@ async def search_index(request: Request, project_id: int, search_request: Search
             template_purser = request.app.template_purser,
     )
 
-    results = nlp_controller.search_vector_db_collection(
+    results = await nlp_controller.search_vector_db_collection(
         project=project,
         text=search_request.text,
         limit=search_request.limit
@@ -171,7 +189,7 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         template_purser = request.app.template_purser,
     )
 
-    answer, full_messages = nlp_controller.answer_rag_question(
+    answer, full_messages = await nlp_controller.answer_rag_question(
         project=project,
         query= search_request.text,
         limit=search_request.limit

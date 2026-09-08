@@ -21,7 +21,7 @@ async def app_lifespan(app: FastAPI):
     )
 
     llm_provider_factory = LLMProviderFactory(settings)
-    vectordb_provider_factory = VectorDBProviderFactory(settings)
+    vectordb_provider_factory = VectorDBProviderFactory(config=settings, db_client=app.db_client)
 
     # generation client
     app.generation_client = llm_provider_factory.create(provider=settings.GENERATION_BACKEND)
@@ -33,7 +33,7 @@ async def app_lifespan(app: FastAPI):
                                                 embedding_size=settings.EMBEDDING_MODEL_SIZE)
     #vector db client
     app.vectordb_client = vectordb_provider_factory.create(provider=settings.VECTOR_DB_BACKEND)
-    app.vectordb_client.connect()
+    await app.vectordb_client.connect()
 
     app.template_purser = TemplateParser(
         language=settings.DEFAULT_LANGUAGE,
@@ -41,8 +41,8 @@ async def app_lifespan(app: FastAPI):
 
     yield 
 
-    app.db_engine.dispose()
-    app.vectordb_client.disconnect()
+    await app.db_engine.dispose()
+    await app.vectordb_client.disconnect()
     
     # Everything after the 'yield' runs on shutdown
 
